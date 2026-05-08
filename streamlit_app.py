@@ -13,7 +13,7 @@ try:
     g = Github(st.secrets["GITHUB_TOKEN"])
     repo = g.get_repo(st.secrets["REPO_NAME"])
 except Exception as e:
-    st.error("Erro nos Secrets! Verifique o GITHUB_TOKEN e o REPO_NAME.")
+    st.error("Erro nos Secrets! Verifique o GITHUB_TOKEN e o REPO_NAME no Streamlit.")
     st.stop()
 
 # --- FUNÇÕES DE NUVEM (AUTO-SAVE) ---
@@ -40,7 +40,7 @@ def salvar_dados_auto():
 def salvar_no_historico_github(dados):
     arquivo_hist = "historico_gastos.csv"
     df_novo = pd.DataFrame(dados)
-    df_novo['Data_Fechamento'] = datetime.now().strftime("%m/%Y") # Mês/Ano
+    df_novo['Data_Fechamento'] = datetime.now().strftime("%m/%Y")
     
     try:
         contents = repo.get_contents(arquivo_hist)
@@ -57,26 +57,27 @@ if 'db' not in st.session_state:
 # --- SIDEBAR ---
 st.sidebar.header("💰 Rendas")
 
-nova_ian = st.sidebar.number_input("Renda Ian", value=float(st.session_state.db["renda_ian"]), format="%.2f")
-if nova_ian != st.session_state.db["renda_ian"]:
-    st.session_state.db["renda_ian"] = nova_ian
+# Campos de Renda com Auto-save
+n_ian = st.sidebar.number_input("Renda Ian", value=float(st.session_state.db["renda_ian"]), format="%.2f")
+if n_ian != st.session_state.db["renda_ian"]:
+    st.session_state.db["renda_ian"] = n_ian
     salvar_dados_auto()
 
-nova_iara = st.sidebar.number_input("Renda Iara", value=float(st.session_state.db["renda_iara"]), format="%.2f")
-if nova_iara != st.session_state.db["renda_iara"]:
-    st.session_state.db["renda_iara"] = nova_iara
+n_iara = st.sidebar.number_input("Renda Iara", value=float(st.session_state.db["renda_iara"]), format="%.2f")
+if n_iara != st.session_state.db["renda_iara"]:
+    st.session_state.db["renda_iara"] = n_iara
     salvar_dados_auto()
 
-nova_extra = st.sidebar.number_input("➕ Renda Extra", value=float(st.session_state.db["renda_extra"]), format="%.2f")
-if nova_extra != st.session_state.db["renda_extra"]:
-    st.session_state.db["renda_extra"] = nova_extra
+n_extra = st.sidebar.number_input("➕ Renda Extra", value=float(st.session_state.db["renda_extra"]), format="%.2f")
+if n_extra != st.session_state.db["renda_extra"]:
+    st.session_state.db["renda_extra"] = n_extra
     salvar_dados_auto()
 
 st.sidebar.divider()
 st.sidebar.header("📥 Exportar")
 if st.session_state.db["contas"]:
     csv_data = pd.DataFrame(st.session_state.db["contas"]).to_csv(index=False).encode('utf-8')
-    st.sidebar.download_button(label="Baixar Gastos do Mês (CSV)", data=csv_data, file_name=f"gastos_{datetime.now().strftime('%m_%Y')}.csv", mime='text/csv')
+    st.sidebar.download_button(label="Baixar Gastos (CSV)", data=csv_data, file_name=f"gastos_{datetime.now().strftime('%m_%Y')}.csv", mime='text/csv')
 
 st.sidebar.divider()
 st.sidebar.header("💸 Novo Gasto")
@@ -132,6 +133,8 @@ with col_btns[1]:
             salvar_dados_auto()
             st.success("Mês fechado e salvo no histórico!")
             st.rerun()
+        else:
+            st.warning("Adicione gastos antes de fechar o mês.")
 
 # --- GRÁFICO DE EVOLUÇÃO ---
 st.divider()
@@ -140,11 +143,10 @@ try:
     contents = repo.get_contents("historico_gastos.csv")
     df_hist = pd.read_csv(io.StringIO(contents.decoded_content.decode()))
     if not df_hist.empty:
-        # Agrupa gastos por mês
         resumo_mensal = df_hist.groupby('Data_Fechamento')['Valor'].sum().reset_index()
         st.bar_chart(data=resumo_mensal, x='Data_Fechamento', y='Valor')
     else:
-        st.info("Ainda não há dados históricos para mostrar o gráfico.")
+        st.info("O gráfico aparecerá aqui após você fechar o primeiro mês.")
 except:
     st.info("O gráfico aparecerá aqui após você fechar o primeiro mês.")
 
