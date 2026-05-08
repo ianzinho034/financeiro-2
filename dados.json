@@ -21,20 +21,8 @@
             "Valor": 784.05
         },
         {
-            "Descri\u00e7\u00e3o": "Cartao",
-            "Valor": 826.26
-        },
-        {
-            "Descri\u00e7\u00e3o": "Park ",
-            "Valor": 30.2
-        },
-        {
-            "Descri\u00e7\u00e3o": "Spotify ",
-            "Valor": 14.0
-        },
-        {
-            "Descri\u00e7\u00e3o": "IPTU ",
-            "Valor": 69.33
+            "Descri\u00e7\u00e3o": "CARTAO",
+            "Valor": 826.22
         }
     ],
     "total_poupado": 357.47,
