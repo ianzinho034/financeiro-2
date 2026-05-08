@@ -57,7 +57,7 @@ if 'db' not in st.session_state:
 # --- SIDEBAR ---
 st.sidebar.header("💰 Rendas")
 
-# Campos de Renda com Auto-save
+# Rendas com salvamento automático
 n_ian = st.sidebar.number_input("Renda Ian", value=float(st.session_state.db["renda_ian"]), format="%.2f")
 if n_ian != st.session_state.db["renda_ian"]:
     st.session_state.db["renda_ian"] = n_ian
@@ -81,12 +81,12 @@ if st.session_state.db["contas"]:
 
 st.sidebar.divider()
 st.sidebar.header("💸 Novo Gasto")
-nome = st.sidebar.text_input("O que é?")
-valor_gasto = st.sidebar.number_input("Valor R$", min_value=0.0, format="%.2f")
+nome_novo = st.sidebar.text_input("O que é?")
+valor_novo = st.sidebar.number_input("Valor R$", min_value=0.0, format="%.2f")
 
 if st.sidebar.button("Adicionar Gasto"):
-    if nome and valor_gasto > 0:
-        st.session_state.db["contas"].append({'Descrição': nome, 'Valor': valor_gasto})
+    if nome_novo and valor_novo > 0:
+        st.session_state.db["contas"].append({'Descrição': nome_novo, 'Valor': valor_novo})
         salvar_dados_auto()
         st.rerun()
 
@@ -140,17 +140,39 @@ with col_btns[1]:
 st.divider()
 st.subheader("📊 Evolução de Gastos (Mês a Mês)")
 try:
-    contents = repo.get_contents("historico_gastos.csv")
-    df_hist = pd.read_csv(io.StringIO(contents.decoded_content.decode()))
+    contents_h = repo.get_contents("historico_gastos.csv")
+    df_hist = pd.read_csv(io.StringIO(contents_h.decoded_content.decode()))
     if not df_hist.empty:
         resumo_mensal = df_hist.groupby('Data_Fechamento')['Valor'].sum().reset_index()
         st.bar_chart(data=resumo_mensal, x='Data_Fechamento', y='Valor')
-    else:
-        st.info("O gráfico aparecerá aqui após você fechar o primeiro mês.")
 except:
-    st.info("O gráfico aparecerá aqui após você fechar o primeiro mês.")
+    st.info("O gráfico aparecerá aqui após o primeiro 'Fechar Mês'.")
 
-# --- TABELA DE GASTOS ---
+# --- TABELA DE GASTOS EDITÁVEL ---
+st.divider()
 if st.session_state.db["contas"]:
     st.write("### 📄 Gastos do Mês Atual")
-    st.dataframe(pd.DataFrame(st.session_state.db["contas"]), use_container_width=True, hide_index=True)
+    st.caption("💡 Edite os valores abaixo ou marque 'Excluir' e clique no botão de salvar para corrigir erros.")
+    
+    df_edit = pd.DataFrame(st.session_state.db["contas"])
+    df_edit["Excluir"] = False
+    
+    # Tabela editável
+    edited_df = st.data_editor(
+        df_edit, 
+        use_container_width=True, 
+        hide_index=True,
+        column_config={
+            "Excluir": st.column_config.CheckboxColumn(help="Marque para remover")
+        }
+    )
+
+    if st.button("💾 SALVAR ALTERAÇÕES NA TABELA"):
+        # Filtra apenas quem não foi marcado para excluir e remove a coluna de controle
+        nova_lista = edited_df[edited_df["Excluir"] == False].drop(columns=["Excluir"]).to_dict('records')
+        st.session_state.db["contas"] = nova_lista
+        salvar_dados_auto()
+        st.success("Alterações salvas!")
+        st.rerun()
+else:
+    st.info("Nenhum gasto registado.")
