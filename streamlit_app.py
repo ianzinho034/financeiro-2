@@ -45,6 +45,22 @@ def salvar_historico_csv(dados):
 st.sidebar.title("🍱 Menu Principal")
 aba = st.sidebar.radio("Escolha a ferramenta:", ["💰 Finanças Mensais", "🛒 Lista de Compras"])
 
+# --- FUNÇÃO DE BAIXAR HISTÓRICO (ADICIONADA) ---
+st.sidebar.divider()
+st.sidebar.subheader("📂 Exportar Dados")
+try:
+    contents_hist = repo.get_contents("historico_gastos.csv")
+    df_download = pd.read_csv(io.StringIO(contents_hist.decoded_content.decode()))
+    csv = df_download.to_csv(index=False).encode('utf-8')
+    st.sidebar.download_button(
+        label="📥 Baixar Histórico Geral",
+        data=csv,
+        file_name='historico_financeiro_ian_iara.csv',
+        mime='text/csv',
+    )
+except:
+    st.sidebar.info("Histórico ainda não disponível para download.")
+
 # ---------------------------------------------------------
 # ABA 1: FINANÇAS MENSAIS
 # ---------------------------------------------------------
