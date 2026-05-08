@@ -1,87 +1,82 @@
 import streamlit as st
 import pandas as pd
-import os
+from datetime import datetime
 
-# Configuração da Página para Celular
-st.set_page_config(page_title="Controle Ian & Iara", layout="centered")
+# Configuração da página
+st.set_page_config(page_title="Ian & Iara Finanças", layout="centered")
 
-# --- FUNÇÕES DE PERSISTÊNCIA ---
-def salvar_dados(renda_ian, renda_iara, gastos_lista):
-    # Salva os valores atuais para não perder ao fechar o app
-    df = pd.DataFrame(gastos_lista)
-    df['renda_ian'] = renda_ian
-    df['renda_iara'] = renda_iara
-    df.to_csv('dados_atuais.csv', index=False)
+# --- ESTILO CUSTOMIZADO ---
+st.markdown("""
+    <style>
+    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+    div[data-testid="stMetricValue"] { color: #2e7d32; }
+    </style>
+    """, unsafe_allow_html=True)
 
-def carregar_dados():
-    if os.path.exists('dados_atuais.csv'):
-        df = pd.read_csv('dados_atuais.csv')
-        rendas = (df['renda_ian'][0], df['renda_iara'][0])
-        contas = df[['Descrição', 'Valor']].to_dict('records')
-        return rendas, contas
-    return (0.0, 0.0), []
-
-# --- INICIALIZAÇÃO ---
-rendas_salvas, contas_salvas = carregar_dados()
-
+# --- INICIALIZAÇÃO DO ESTADO ---
 if 'contas' not in st.session_state:
-    st.session_state.contas = contas_salvas
+    st.session_state.contas = []
 
-# --- INTERFACE ---
-st.title("💰 Controle Ian & Iara")
+# --- SIDEBAR (CONFIGURAÇÕES) ---
+st.sidebar.header("⚙️ Configurações")
+sal_ian = st.sidebar.number_input("Renda Ian", value=1894.34, step=100.0)
+sal_iara = st.sidebar.number_input("Renda Iara", value=1894.34, step=100.0)
+renda_total = sal_ian + sal_iara
 
-# 1. ENTRADA DE RENDAS
-with st.expander("💵 Ajustar Salários", expanded=False):
-    col1, col2 = st.columns(2)
-    sal_ian = col1.number_input("Ian R$", value=rendas_salvas[0], step=100.0)
-    sal_iara = col2.number_input("Iara R$", value=rendas_salvas[1], step=100.0)
-    renda_total = sal_ian + sal_iara
+# --- ÁREA DE LANÇAMENTO ---
+st.title("☀️ Ian & Iara Finanças")
+st.subheader("💸 Novo Gasto")
 
-# 2. ADICIONAR CONTA/GASTO
-st.subheader("💸 Adicionar Conta")
-c_nome = st.text_input("Descrição (ex: Aluguel, Luz...)")
-c_valor = st.number_input("Valor da Conta R$", min_value=0.0, step=10.0)
-
-if st.button("➕ Adicionar à Lista"):
-    if c_nome and c_valor > 0:
-        st.session_state.contas.append({'Descrição': c_nome, 'Valor': c_valor})
-        salvar_dados(sal_ian, sal_iara, st.session_state.contas)
-        st.rerun()
+with st.container():
+    col_n, col_v, col_b = st.columns([2, 1, 1])
+    nome = col_n.text_input("O que é?", placeholder="Ex: Aluguel")
+    valor = col_v.number_input("Valor R$", min_value=0.0, step=10.0)
+    if col_b.button("✅ Adicionar", use_container_width=True):
+        if nome and valor > 0:
+            st.session_state.contas.append({'Descrição': nome, 'Valor': valor})
+            st.rerun()
 
 st.divider()
 
-# 3. CÁLCULOS
-total_gastos = sum(item['Valor'] for item in st.session_state.contas)
-sobra_total = renda_total - total_gastos
+# --- CÁLCULOS ---
+gasto_total = sum(item['Valor'] for item in st.session_state.contas)
+sobra_total = renda_total - gasto_total
 
-# Regra dos 50/50 solicitada
-valor_investir = sobra_total / 2 if sobra_total > 0 else 0
-valor_gastar = sobra_total / 2 if sobra_total > 0 else 0
+# Divisão 50/50 (Só calcula se sobrar dinheiro)
+if sobra_total > 0:
+    valor_investir = sobra_total / 2
+    valor_gastar = sobra_total / 2
+else:
+    valor_investir = 0.0
+    valor_gastar = 0.0
 
-# 4. EXIBIÇÃO DOS RESULTADOS (DASHBOARD)
-st.metric("📊 RENDA TOTAL", f"R$ {renda_total:,.2f}")
-st.metric("📉 TOTAL DE CONTAS", f"R$ {total_gastos:,.2f}", delta=f"-{total_gastos:,.2f}", delta_color="inverse")
+# --- DASHBOARD DE RESULTADOS ---
+c1, c2 = st.columns(2)
+c1.metric("💰 RENDA TOTAL", f"R$ {renda_total:,.2f}")
+c2.metric("📉 TOTAL GASTOS", f"R$ {gasto_total:,.2f}", delta=f"-{gasto_total:,.2f}", delta_color="inverse")
 
 st.markdown("---")
 st.subheader("🎯 Destino da Sobra")
 
-col_inv, col_gas = st.columns(2)
-with col_inv:
-    st.success(f"**PARA INVESTIR**\n\n R$ {valor_investir:,.2f}")
-with col_gas:
-    st.info(f"**PARA GASTAR**\n\n R$ {valor_gastar:,.2f}")
+d1, d2 = st.columns(2)
+with d1:
+    st.success(f"**💜 INVESTIR (50%)**\n\n R$ {valor_investir:,.2f}")
+with d2:
+    st.info(f"**🛍️ GASTAR (50%)**\n\n R$ {valor_gastar:,.2f}")
 
-# 5. LISTA DE CONTAS LANÇADAS
+# --- LISTA DE GASTOS COM OPÇÃO DE DELETAR ---
 st.divider()
-st.write("### 📝 Detalhes das Contas")
+st.subheader("📝 Detalhes do Mês")
+
 if st.session_state.contas:
-    df_contas = pd.DataFrame(st.session_state.contas)
-    st.table(df_contas) # Table fica melhor que Dataframe no celular
+    df = pd.DataFrame(st.session_state.contas)
     
-    if st.button("🗑️ Limpar Tudo"):
+    # Exibe a tabela
+    st.table(df)
+    
+    # Botão para limpar o mês
+    if st.button("🗑️ Limpar Mês / Novo Ciclo"):
         st.session_state.contas = []
-        if os.path.exists('dados_atuais.csv'):
-            os.remove('dados_atuais.csv')
         st.rerun()
 else:
-    st.info("Nenhuma conta lançada.")
+    st.info("Nenhum gasto lançado ainda. Comece adicionando acima!")
