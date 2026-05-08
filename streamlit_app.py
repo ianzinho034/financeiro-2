@@ -1,132 +1,95 @@
 import streamlit as st
-import pandas as pd  # Corrigido: o nome da biblioteca é pandas
+import pandas as pd
+from github import Github # Certifique-se de colocar PyGithub no seu arquivo requirements.txt
+import json
 from datetime import datetime
-import os
 
-# --- FUNÇÕES DE APOIO (PERSISTÊNCIA) ---
-
-def salvar_poupado(valor):
-    """Salva o valor acumulado em um arquivo de texto para não perder ao reiniciar."""
-    with open("total_poupado.txt", "w") as f:
-        f.write(str(valor))
-
-def carregar_poupado():
-    """Carrega o valor acumulado do arquivo ou inicia com o valor padrão."""
-    if os.path.exists("total_poupado.txt"):
-        with open("total_poupado.txt", "r") as f:
-            return float(f.read())
-    return 357.47
-
-def salvar_no_historico(dados):
-    """Salva os gastos do mês em uma planilha CSV."""
-    arquivo = 'historico_gastos.csv'
-    df_novo = pd.DataFrame(dados)
-    df_novo['Data_Fechamento'] = datetime.now().strftime("%d/%m/%Y %H:%M")
-    if os.path.exists(arquivo):
-        df_antigo = pd.read_csv(arquivo)
-        df_final = pd.concat([df_antigo, df_novo], ignore_index=True)
-    else:
-        df_final = df_novo
-    df_final.to_csv(arquivo, index=False)
-
-# 1. Configuração da Página
+# --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Ian & Iara Finanças", layout="wide")
 
-# 2. Estado da Sessão
-if 'contas' not in st.session_state:
-    st.session_state.contas = []
-if 'total_poupado' not in st.session_state:
-    st.session_state.total_poupado = carregar_poupado()
-if 'investido_feito' not in st.session_state:
-    st.session_state.investido_feito = False
+# --- CONEXÃO COM GITHUB ---
+try:
+    g = Github(st.secrets["GITHUB_TOKEN"])
+    repo = g.get_repo(st.secrets["REPO_NAME"])
+except Exception as e:
+    st.error("Erro na conexão com GitHub. Verifique os Secrets!")
+    st.stop()
 
-# 3. Sidebar (Entradas)
-st.sidebar.header("💰 Renda Mensal")
-sal_ian = st.sidebar.number_input("Renda Ian", value=0.0, format="%.2f")
-sal_iara = st.sidebar.number_input("Renda Iara", value=0.0, format="%.2f")
-renda_extra = st.sidebar.number_input("➕ Renda Extra", value=0.0, format="%.2f")
+# --- FUNÇÕES DE NUVEM ---
+def carregar_dados():
+    try:
+        contents = repo.get_contents("dados.json")
+        return json.loads(contents.decoded_content.decode())
+    except:
+        return {"contas": [], "total_poupado": 357.47, "renda_ian": 0.0, "renda_iara": 0.0, "renda_extra": 0.0, "investido_feito": False}
+
+def salvar_dados(dados):
+    conteudo_json = json.dumps(dados, indent=4)
+    contents = repo.get_contents("dados.json")
+    repo.update_file(contents.path, "Atualização de saldo", conteudo_json, contents.sha)
+
+# --- INICIALIZAÇÃO ---
+if 'db' not in st.session_state:
+    st.session_state.db = carregar_dados()
+
+# --- SIDEBAR ---
+st.sidebar.header("💰 Rendas")
+st.session_state.db["renda_ian"] = st.sidebar.number_input("Renda Ian", value=float(st.session_state.db["renda_ian"]), format="%.2f")
+st.session_state.db["renda_iara"] = st.sidebar.number_input("Renda Iara", value=float(st.session_state.db["renda_iara"]), format="%.2f")
+st.session_state.db["renda_extra"] = st.sidebar.number_input("➕ Renda Extra", value=float(st.session_state.db["renda_extra"]), format="%.2f")
+
+if st.sidebar.button("💾 SALVAR TUDO NA NUVEM"):
+    salvar_dados(st.session_state.db)
+    st.toast("Dados guardados com segurança!")
 
 st.sidebar.divider()
 st.sidebar.header("💸 Novo Gasto")
 nome = st.sidebar.text_input("O que é?")
 valor_gasto = st.sidebar.number_input("Valor R$", min_value=0.0, format="%.2f")
 
-if st.sidebar.button("Adicionar"):
+if st.sidebar.button("Adicionar Gasto"):
     if nome and valor_gasto > 0:
-        st.session_state.contas.append({'Categoria': 'Geral', 'Descrição': nome, 'Valor': valor_gasto})
+        st.session_state.db["contas"].append({'Descrição': nome, 'Valor': valor_gasto})
+        salvar_dados(st.session_state.db)
         st.rerun()
 
-# 4. Cálculos de Orçamento
-renda_total = sal_ian + sal_iara + renda_extra
-gasto_total = sum(item['Valor'] for item in st.session_state.contas)
-sobra_conta = renda_total - gasto_total
+# --- CÁLCULOS ---
+renda_t = st.session_state.db["renda_ian"] + st.session_state.db["renda_iara"] + st.session_state.db["renda_extra"]
+gasto_t = sum(item['Valor'] for item in st.session_state.db["contas"])
+sobra = renda_t - gasto_t
 
-# Lógica da Divisão da Sobra
-valor_sugerido_investimento = sobra_conta / 2 if sobra_conta > 0 else 0.0
-
-if st.session_state.investido_feito:
-    exibir_investir = 0.00
-    exibir_livre = 60.95  # Valor fixo solicitado por você
+if st.session_state.db["investido_feito"]:
+    inv, livre = 0.00, 60.95
 else:
-    exibir_investir = valor_sugerido_investimento
-    exibir_livre = valor_sugerido_investimento
+    inv = sobra / 2 if sobra > 0 else 0.0
+    livre = sobra / 2 if sobra > 0 else 0.0
 
-# 5. Interface Principal
+# --- INTERFACE ---
 st.title("☀️ Ian & Iara Finanças")
-
-# Linha 1: Métricas de Orçamento
 c1, c2, c3 = st.columns(3)
-c1.metric("💰 ORÇAMENTO TOTAL", f"R$ {renda_total:,.2f}")
-c2.metric("💸 GASTO CONTA", f"R$ {gasto_total:,.2f}")
-c3.metric("📉 SOBRA CONTA", f"R$ {sobra_conta:,.2f}")
+c1.metric("💰 ORÇAMENTO", f"R$ {renda_t:,.2f}")
+c2.metric("💸 GASTOS", f"R$ {gasto_t:,.2f}")
+c3.metric("📉 SOBRA", f"R$ {sobra:,.2f}")
 
 st.markdown("---")
-st.subheader("🎯 Divisão da Sobra")
-
-# Linha 2: Divisão e Poupança
 d1, d2, d3 = st.columns(3)
-d1.metric("💜 INVESTIR", f"R$ {exibir_investir:,.2f}")
-d2.metric("✅ LIVRE P/ GASTAR", f"R$ {exibir_livre:,.2f}")
-d3.metric("🏦 TOTAL POUPADO", f"R$ {st.session_state.total_poupado:,.2f}")
+d1.metric("💜 INVESTIR", f"R$ {inv:,.2f}")
+d2.metric("✅ LIVRE", f"R$ {livre:,.2f}")
+d3.metric("🏦 TOTAL POUPADO", f"R$ {st.session_state.db['total_poupado']:,.2f}")
 
-# --- BOTÕES DE AÇÃO ---
-col_btn1, col_btn2 = st.columns(2)
-
-with col_btn1:
-    if st.button("🚀 CONFIRMAR INVESTIMENTO"):
-        if not st.session_state.investido_feito and exibir_investir > 0:
-            # Soma ao total, salva no arquivo e zera o card visualmente
-            st.session_state.total_poupado += exibir_investir
-            salvar_poupado(st.session_state.total_poupado)
-            st.session_state.investido_feito = True
-            st.success(f"R$ {exibir_investir:.2f} somados ao Total Poupado!")
-            st.rerun()
-        elif st.session_state.investido_feito:
-            st.info("O investimento deste mês já foi processado.")
-        else:
-            st.warning("Não há valor positivo para investir.")
-
-with col_btn2:
-    if st.button("🔒 FECHAR MÊS E SALVAR"):
-        if st.session_state.contas:
-            salvar_no_historico(st.session_state.contas)
-            st.session_state.contas = []
-            st.session_state.investido_feito = False
-            st.success("Mês fechado e salvo no histórico CSV!")
-            st.rerun()
-        else:
-            st.warning("Adicione gastos antes de fechar o mês.")
-
-# 6. Tabela de Gastos
-st.divider()
-st.write("### 📄 Gastos do Mês Atual")
-if st.session_state.contas:
-    df = pd.DataFrame(st.session_state.contas)
-    st.dataframe(df, use_container_width=True, hide_index=True)
-    
-    if st.button("Limpar Gastos Atuais"):
-        st.session_state.contas = []
-        st.session_state.investido_feito = False
+if st.button("🚀 CONFIRMAR INVESTIMENTO"):
+    if not st.session_state.db["investido_feito"] and inv > 0:
+        st.session_state.db["total_poupado"] += inv
+        st.session_state.db["investido_feito"] = True
+        salvar_dados(st.session_state.db)
         st.rerun()
-else:
-    st.info("Nenhum gasto registrado para este período.")
+
+if st.button("🔒 FECHAR MÊS (LIMPAR)"):
+    st.session_state.db["contas"] = []
+    st.session_state.db["investido_feito"] = False
+    salvar_dados(st.session_state.db)
+    st.rerun()
+
+st.divider()
+if st.session_state.db["contas"]:
+    st.dataframe(pd.DataFrame(st.session_state.db["contas"]), use_container_width=True)
