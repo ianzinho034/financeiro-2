@@ -66,7 +66,8 @@ if aba == "💰 Finanças Mensais":
             "renda_ian": 0.0, 
             "renda_iara": 0.0, 
             "renda_extra": 0.0, 
-            "investido_feito": False
+            "investido_feito": False,
+            "valor_investido_travado": 0.0
         })
 
     st.title("☀️ Ian & Iara Finanças")
@@ -99,30 +100,23 @@ if aba == "💰 Finanças Mensais":
             salvar_json("dados.json", st.session_state.db)
             st.rerun()
 
-    # --- LÓGICA DE CÁLCULOS CORRIGIDA ---
+    # --- LÓGICA DE CÁLCULOS MATEMÁTICOS ---
     renda_total = st.session_state.db["renda_ian"] + st.session_state.db["renda_iara"] + st.session_state.db["renda_extra"]
     gastos_total = sum(item['Valor'] for item in st.session_state.db["contas"])
-    
-    # Sobra Bruta (Antes de qualquer divisão)
-    sobra_bruta = renda_total - gastos_total
-    
-    # A base do investimento é sempre a metade da sobra disponível
-    # Para garantir os 333,29: se a sobra era 796,22, a metade é 398,11.
-    valor_investimento_base = sobra_bruta / 2 if sobra_bruta > 0 else 0.0
+    sobra_atual = renda_total - gastos_total
 
-    if st.session_state.db["investido_feito"]:
-        # Se já investiu, a sobra cai pela metade exata que foi guardada
-        # O que sobrar (Livre) é a Sobra Bruta - Metade Investida
-        sobra_exibida = sobra_bruta - (valor_investimento_base if not st.session_state.db.get("valor_investido_travado") else st.session_state.db["valor_investido_travado"])
-        
-        # Caso especial para bater sua conta: se a sobra bruta atual cair (por novos gastos), 
-        # o valor livre reflete exatamente Sobra Bruta - Metade ja Poupada.
-        inv_card = 0.00
-        livre_card = sobra_bruta / 2 # Isso garante que metade da sobra atual é o que você tem livre
+    # Se ainda não investiu, a metade é calculada sobre a sobra do momento
+    if not st.session_state.db["investido_feito"]:
+        valor_investir = sobra_atual / 2 if sobra_atual > 0 else 0.0
+        sobra_exibida = sobra_atual
+        livre_exibido = valor_investir
     else:
-        sobra_exibida = sobra_bruta
-        inv_card = valor_investimento_base
-        livre_card = valor_investimento_base
+        # SE JÁ INVESTIU: O valor travado é o que "saiu" da sobra
+        valor_investir = 0.00
+        # Sobra exibida = Orçamento - Gastos - Valor que já foi para a poupança
+        # Isso garante que 398.11 - 64.82 = 333.29
+        sobra_exibida = sobra_atual - st.session_state.db.get("valor_investido_travado", 0.0)
+        livre_exibido = sobra_exibida
 
     # Dashboard
     c1, c2, c3 = st.columns(3)
@@ -132,18 +126,18 @@ if aba == "💰 Finanças Mensais":
 
     st.markdown("---")
     d1, d2, d3 = st.columns(3)
-    d1.metric("💜 INVESTIR", f"R$ {inv_card:,.2f}")
-    d2.metric("✅ LIVRE", f"R$ {livre_card:,.2f}")
+    d1.metric("💜 INVESTIR", f"R$ {valor_investir:,.2f}")
+    d2.metric("✅ LIVRE", f"R$ {livre_exibido:,.2f}")
     d3.metric("🏦 TOTAL POUPADO", f"R$ {st.session_state.db['total_poupado']:,.2f}")
 
     btn_col1, btn_col2 = st.columns(2)
     with btn_col1:
         if st.button("🚀 CONFIRMAR INVESTIMENTO"):
-            if not st.session_state.db["investido_feito"] and inv_card > 0:
-                st.session_state.db["total_poupado"] += inv_card
+            if not st.session_state.db["investido_feito"] and sobra_atual > 0:
+                metade = sobra_atual / 2
+                st.session_state.db["total_poupado"] += metade
+                st.session_state.db["valor_investido_travado"] = metade
                 st.session_state.db["investido_feito"] = True
-                # Salvamos quanto foi travado para manter a conta correta
-                st.session_state.db["valor_investido_travado"] = inv_card
                 salvar_json("dados.json", st.session_state.db)
                 st.rerun()
     
@@ -153,8 +147,7 @@ if aba == "💰 Finanças Mensais":
                 salvar_historico_csv(st.session_state.db["contas"])
                 st.session_state.db["contas"] = []
                 st.session_state.db["investido_feito"] = False
-                if "valor_investido_travado" in st.session_state.db:
-                    del st.session_state.db["valor_investido_travado"]
+                st.session_state.db["valor_investido_travado"] = 0.0
                 salvar_json("dados.json", st.session_state.db)
                 st.rerun()
 
