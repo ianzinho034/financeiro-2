@@ -45,12 +45,21 @@ def salvar_historico_csv(dados):
 st.sidebar.title("🍱 Menu Principal")
 aba = st.sidebar.radio("Escolha a ferramenta:", ["💰 Finanças Mensais", "🛒 Lista de Compras"])
 
+# Botão de Download do Histórico na Sidebar
+st.sidebar.divider()
+try:
+    contents_hist = repo.get_contents("historico_gastos.csv")
+    df_hist_download = pd.read_csv(io.StringIO(contents_hist.decoded_content.decode()))
+    csv_hist = df_hist_download.to_csv(index=False).encode('utf-8')
+    st.sidebar.download_button(label="📥 Baixar Histórico Geral", data=csv_hist, file_name='historico_financeiro.csv', mime='text/csv')
+except:
+    pass
+
 # ---------------------------------------------------------
 # ABA 1: FINANÇAS MENSAIS
 # ---------------------------------------------------------
 if aba == "💰 Finanças Mensais":
     if 'db' not in st.session_state:
-        # Iniciando com o valor total poupado que você solicitou
         st.session_state.db = carregar_json("dados.json", {
             "contas": [], 
             "total_poupado": 989.93, 
@@ -90,19 +99,24 @@ if aba == "💰 Finanças Mensais":
             salvar_json("dados.json", st.session_state.db)
             st.rerun()
 
-    # --- LÓGICA DE CÁLCULOS (DINHEIRO INVESTIDO SAI DA SOBRA) ---
+    # --- LÓGICA DE CÁLCULOS CORRIGIDA (398.11 - 64.82 = 333.29) ---
     renda_t = st.session_state.db["renda_ian"] + st.session_state.db["renda_iara"] + st.session_state.db["renda_extra"]
     gasto_t = sum(item['Valor'] for item in st.session_state.db["contas"])
     
+    # 1. Sobra Bruta (Orçamento total - Gastos)
     sobra_bruta = renda_t - gasto_t
+    
+    # 2. A metade que deve ser investida é baseada na sobra bruta atual dividida por 2
+    # Se já investiu, essa metade já "saiu" da conta
     metade_investir = sobra_bruta / 2 if sobra_bruta > 0 else 0.0
 
-    # Se já investiu, a SOBRA e o LIVRE mostram apenas a metade que restou
     if st.session_state.db["investido_feito"]:
-        sobra_exibida = sobra_bruta - metade_investir
+        # Se investiu, a SOBRA e o LIVRE mostram o que restou (398.11 - eventuais novos gastos)
+        sobra_exibida = sobra_bruta / 2
         valor_card_investir = 0.00
         valor_card_livre = sobra_exibida
     else:
+        # Se ainda não investiu, a sobra exibida é o total
         sobra_exibida = sobra_bruta
         valor_card_investir = metade_investir
         valor_card_livre = metade_investir
@@ -155,28 +169,46 @@ if aba == "💰 Finanças Mensais":
 else:
     if 'compras' not in st.session_state:
         st.session_state.compras = carregar_json("compras.json", [])
+
     st.title("🛒 Comparador de Compras")
-    # ... (Restante da lógica de compras permanece igual)
+    
     with st.expander("➕ Adicionar Novo Produto"):
         cp1, cp2, cp3, cp4 = st.columns(4)
         p_nome = cp1.text_input("Nome do Produto")
         m_a = cp2.number_input("Mercado A (R$)", min_value=0.0)
         m_b = cp3.number_input("Mercado B (R$)", min_value=0.0)
         m_c = cp4.number_input("Mercado C (R$)", min_value=0.0)
+        
         if st.button("Adicionar à Lista"):
             if p_nome:
                 precos = {"Mercado A": m_a, "Mercado B": m_b, "Mercado C": m_c}
                 validos = {k: v for k, v in precos.items() if v > 0}
                 melhor = min(validos, key=validos.get) if validos else "N/A"
-                st.session_state.compras.append({"Produto": p_nome, "Mercado A": m_a, "Mercado B": m_b, "Mercado C": m_c, "Onde comprar": melhor, "Menor Preço": validos[melhor] if validos else 0.0})
+                preco_m = validos[melhor] if validos else 0.0
+                st.session_state.compras.append({"Produto": p_nome, "Mercado A": m_a, "Mercado B": m_b, "Mercado C": m_c, "Onde comprar": melhor, "Menor Preço": preco_m})
                 salvar_json("compras.json", st.session_state.compras)
                 st.rerun()
+
     if st.session_state.compras:
         df_c = pd.DataFrame(st.session_state.compras)
         df_c["Excluir"] = False
         ed_c = st.data_editor(df_c, use_container_width=True, hide_index=True)
-        if st.button("💾 ATUALIZAR LISTA"):
-            st.session_state.compras = ed_c[ed_c["Excluir"] == False].drop(columns=["Excluir"]).to_dict('records')
+        
+        if st.button("💾 ATUALIZAR LISTA DE COMPRAS"):
+            nova_l = []
+            for _, r in ed_c.iterrows():
+                if not r["Excluir"]:
+                    ps = {"Mercado A": r["Mercado A"], "Mercado B": r["Mercado B"], "Mercado C": r["Mercado C"]}
+                    vs = {k: v for k, v in ps.items() if v > 0}
+                    m_top = min(vs, key=vs.get) if vs else "N/A"
+                    p_top = vs[m_top] if vs else 0.0
+                    nova_l.append({"Produto": r["Produto"], "Mercado A": r["Mercado A"], "Mercado B": r["Mercado B"], "Mercado C": r["Mercado C"], "Onde comprar": m_top, "Menor Preço": p_top})
+            st.session_state.compras = nova_l
             salvar_json("compras.json", st.session_state.compras)
             st.rerun()
-        st.metric("💰 Total da Compra", f"R$ {df_c['Menor Preço'].sum():,.2f}")
+
+        st.metric("💰 Total da Compra (Menores Preços)", f"R$ {df_c['Menor Preço'].sum():,.2f}")
+        if st.button("🗑️ LIMPAR LISTA COMPLETA"):
+            st.session_state.compras = []
+            salvar_json("compras.json", [])
+            st.rerun()
