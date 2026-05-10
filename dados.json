@@ -23,6 +23,10 @@
         {
             "Descri\u00e7\u00e3o": "PARK",
             "Valor": 30.2
+        },
+        {
+            "Descri\u00e7\u00e3o": "REGINA",
+            "Valor": 784.05
         }
     ],
     "total_poupado": 989.93,
