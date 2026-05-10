@@ -15,6 +15,10 @@
         {
             "Descri\u00e7\u00e3o": "INTERNET ",
             "Valor": 99.9
+        },
+        {
+            "Descri\u00e7\u00e3o": "SPOTIFY",
+            "Valor": 14.0
         }
     ],
     "total_poupado": 989.93,
